@@ -1,0 +1,7 @@
+proxmox_endpoint    = "http://<PROXMOX_IP>:8006" # your proxmox server's ip address
+proxmox_api_token   = "example-user@pve!provider=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" # created api token
+name                = "ubuntu-vm-example"
+proxmox_node_name   = "pve-example"
+template_id         = 1
+ip_address          = "192.168.1.10/24"
+gateway             = "192.168.1.1"
