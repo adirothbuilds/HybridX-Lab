@@ -55,6 +55,12 @@ variable "datastore" {
     default     = "local-lvm"
 }
 
+variable "disk_size" {
+  description = "Disk size in GB for the VM"
+  type        = number
+  default     = 20
+}
+
 variable "ip_address" {
     description = "Static IP for VM"
     type        = string

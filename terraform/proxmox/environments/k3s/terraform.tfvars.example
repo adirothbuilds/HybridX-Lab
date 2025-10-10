@@ -1,0 +1,48 @@
+proxmox_endpoint  = "https://proxmox.lab.local:8006/api2/json"      # Proxmox API endpoint
+proxmox_api_token = "example-user@pve!provider=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" # API token ID and secret
+proxmox_node_name = "pve-example"
+template_id       = 9000
+
+machines = {
+  "k3s-master" = {
+    ip_address     = "10.0.40.10/24"
+    gateway        = "10.0.40.1"
+    cores          = 4
+    sockets        = 1
+    memory         = 4096
+    username       = "ubuntu"
+    ssh_key        = "./id_rsa.pub"
+    network_bridge = "vmbr0"
+    network_model  = "virtio"
+    datastore      = "local-lvm"
+    disk_size      = 60
+  }
+
+  "k3s-worker-1" = {
+    ip_address     = "10.0.40.11/24"
+    gateway        = "10.0.40.1"
+    cores          = 2
+    sockets        = 1
+    memory         = 3072
+    username       = "ubuntu"
+    ssh_key        = "./id_rsa.pub"
+    network_bridge = "vmbr0"
+    network_model  = "virtio"
+    datastore      = "local-lvm"
+    disk_size      = 40
+  }
+
+  "k3s-worker-2" = {
+    ip_address     = "10.0.40.12/24"
+    gateway        = "10.0.40.1"
+    cores          = 2
+    sockets        = 1
+    memory         = 3072
+    username       = "ubuntu"
+    ssh_key        = "./id_rsa.pub"
+    network_bridge = "vmbr0"
+    network_model  = "virtio"
+    datastore      = "local-lvm"
+    disk_size      = 40
+  }
+}

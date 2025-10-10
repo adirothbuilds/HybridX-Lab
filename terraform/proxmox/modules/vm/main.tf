@@ -34,6 +34,14 @@ resource "proxmox_virtual_environment_vm" "this" {
         model  = var.network_model
     }
 
+    disk {
+        datastore_id = var.datastore
+        size         = var.disk_size
+        interface    = "scsi0"
+        iothread     = true
+        discard      = "on"
+    }
+
     initialization {
         datastore_id = var.datastore
         ip_config {
