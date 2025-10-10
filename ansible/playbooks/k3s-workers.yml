@@ -1,0 +1,64 @@
+---
+- name: Install and join K3s worker nodes
+  hosts: workers
+  become: true
+  vars:
+    artifacts_dir: "{{ artifacts_dir | default('./artifacts') }}"
+    k3s_token_file: "{{ k3s_token_file | default(artifacts_dir + '/k3s_node_token.txt') }}"
+    k3s_version: "{{ k3s_version | default('v1.30.0+k3s1') }}"
+    k3s_channel: "{{ k3s_channel | default('stable') }}"
+    cluster_init_node: "{{ groups['master'][0] }}"
+    master_ip: "{{ hostvars[cluster_init_node]['ansible_host'] | default(cluster_init_node) }}"
+    k3s_server_url: "https://{{ master_ip }}:6443"
+
+  tasks:
+    - name: Verify K3s token exists locally
+      ansible.builtin.stat:
+        path: "{{ k3s_token_file }}"
+      delegate_to: localhost
+      register: token_check
+      become: false
+      run_once: true
+      tags: [verify]
+
+    - name: Fail if join token missing
+      ansible.builtin.fail:
+        msg: "Join token file not found at {{ k3s_token_file }}. Make sure the master playbook ran successfully."
+      when: not token_check.stat.exists
+      run_once: true
+      tags: [verify]
+
+    - name: Read join token from local file
+      ansible.builtin.slurp:
+        src: "{{ k3s_token_file }}"
+      register: local_token
+      delegate_to: localhost
+      run_once: true
+      become: false
+      tags: [token]
+
+    - name: Install K3s worker agent
+      ansible.builtin.shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} INSTALL_K3S_CHANNEL={{ k3s_channel }} \
+        K3S_URL={{ k3s_server_url }} \
+        K3S_TOKEN={{ (local_token.content | b64decode).strip() }} \
+        sh -s - agent
+      args:
+        creates: /usr/local/bin/k3s-agent
+      register: worker_install
+      changed_when: "'already installed' not in worker_install.stdout"
+      tags: [install]
+
+    - name: Wait for k3s-agent service to become active
+      ansible.builtin.shell: systemctl is-active k3s-agent
+      register: k3s_status
+      until: k3s_status.stdout.find('active') != -1
+      retries: 10
+      delay: 6
+      changed_when: false
+      tags: [verify]
+
+    - name: Confirm worker registration
+      ansible.builtin.debug:
+        msg: "Worker node {{ inventory_hostname }} joined cluster at {{ k3s_server_url }}"
+      tags: [summary]

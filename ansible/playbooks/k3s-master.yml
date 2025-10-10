@@ -1,0 +1,98 @@
+---
+- name: Install and configure K3s control-plane nodes
+  hosts: master
+  become: true
+  vars:
+    k3s_version: "{{ k3s_version | default('v1.30.0+k3s1') }}"
+    k3s_channel: "{{ k3s_channel | default('stable') }}"
+    k3s_config_mode: 644
+    artifacts_dir: "{{ artifacts_dir | default('./artifacts') }}"
+    cluster_init_node: "{{ groups['master'][0] }}"
+    k3s_master_ip: "{{ hostvars[cluster_init_node]['ansible_host'] | default(cluster_init_node) }}"
+    k3s_server_url: "https://{{ k3s_master_ip }}:6443"
+
+  tasks:
+    - name: Install curl dependency
+      ansible.builtin.apt:
+        name: curl
+        state: present
+        update_cache: yes
+      tags: [precheck]
+
+    - name: Install or join K3s master
+      ansible.builtin.shell: |
+        {% if inventory_hostname == cluster_init_node %}
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} INSTALL_K3S_CHANNEL={{ k3s_channel }} sh -s - server --cluster-init --write-kubeconfig-mode {{ k3s_config_mode }}
+        {% else %}
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} INSTALL_K3S_CHANNEL={{ k3s_channel }} K3S_URL={{ k3s_server_url }} K3S_TOKEN=$(cat /var/lib/rancher/k3s/server/node-token) sh -s - server --write-kubeconfig-mode {{ k3s_config_mode }}
+        {% endif %}
+      args:
+        creates: /usr/local/bin/k3s
+      register: k3s_install
+      changed_when: "'already installed' not in k3s_install.stdout"
+      tags: [install]
+
+    - name: Wait for K3s service to be active
+      ansible.builtin.shell: systemctl is-active k3s
+      register: k3s_status
+      until: k3s_status.stdout.find("active") != -1
+      retries: 12
+      delay: 5
+      changed_when: false
+      tags: [verify]
+
+    - name: Retrieve join token (only from first master)
+      ansible.builtin.shell: cat /var/lib/rancher/k3s/server/node-token
+      register: k3s_token
+      changed_when: false
+      when: inventory_hostname == cluster_init_node
+      tags: [token]
+
+    - name: Ensure local artifacts directory exists
+      ansible.builtin.file:
+        path: "{{ artifacts_dir }}"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      run_once: true
+      become: false
+      tags: [local]
+
+    - name: Save join token locally
+      ansible.builtin.copy:
+        content: "{{ k3s_token.stdout }}"
+        dest: "{{ artifacts_dir }}/k3s_node_token.txt"
+      delegate_to: localhost
+      become: false
+      when: inventory_hostname == cluster_init_node
+      tags: [local]
+
+    - name: Fetch kubeconfig (only from first master)
+      ansible.builtin.fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ artifacts_dir }}/k3s.yaml"
+        flat: yes
+      become: true
+      when: inventory_hostname == cluster_init_node
+      tags: [local]
+
+    - name: Fix kubeconfig server IP
+      ansible.builtin.replace:
+        path: "{{ artifacts_dir }}/k3s.yaml"
+        regexp: '127\\.0\\.0\\.1'
+        replace: "{{ k3s_master_ip }}"
+      delegate_to: localhost
+      become: false
+      when: inventory_hostname == cluster_init_node
+      tags: [local]
+
+    - name: Report cluster initialization
+      ansible.builtin.debug:
+        msg: >
+          K3s Control Plane node {{ inventory_hostname }} initialized successfully.
+          {% if inventory_hostname == cluster_init_node %}
+          Cluster initialized (primary master). Token saved to {{ artifacts_dir }}/k3s_node_token.txt
+          {% else %}
+          Joined existing cluster at {{ k3s_server_url }}
+          {% endif %}
+      tags: [summary]
